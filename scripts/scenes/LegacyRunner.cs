@@ -26,6 +26,7 @@ public partial class LegacyRunner : BaseScene
 	private static Label3D progressLabel;
 	//private static TextureRect jesus;
 	private static MeshInstance3D cursor;
+    private static MeshInstance3D ghostCursor;
 	private static MeshInstance3D grid;
 	private static MeshInstance3D videoQuad;
 	private static MultiMeshInstance3D notesMultimesh;
@@ -231,6 +232,7 @@ public partial class LegacyRunner : BaseScene
 		public void Hit(int index)
 		{
             StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
+            StandardMaterial3D ghostcMat = (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D);
 
 			Hits++;
 			Sum++;
@@ -240,7 +242,7 @@ public partial class LegacyRunner : BaseScene
 
 			LastHitColour = SkinManager.Instance.Skin.NoteColors[index % SkinManager.Instance.Skin.NoteColors.Length];
 
-            if (settings.HitColorCursor.Value) cursorMat?.AlbedoColor = LastHitColour;
+            if (settings.HitColorCursor.Value) { cursorMat?.AlbedoColor = LastHitColour; ghostcMat?.AlbedoColor = LastHitColour; }
 
 			float lateness = IsReplay ? HitsInfo[index] : (float)(((int)Progress - Map.Notes[index].Millisecond) / Speed);
 			float factor = 1 - Math.Max(0, lateness - 25) / 150f;
@@ -479,6 +481,9 @@ public partial class LegacyRunner : BaseScene
 		skipLabel = holder.GetNode<Label3D>("Skip");
 		progressLabel = holder.GetNode<Label3D>("Progress");
 		cursor = holder.GetNode<MeshInstance3D>("Cursor");
+        ghostCursor = cursor.Duplicate() as MeshInstance3D;
+        ghostCursor.Name = "GhostCursor";
+        holder.AddChild(ghostCursor);
 		grid = holder.GetNode<MeshInstance3D>("Grid");
 		videoQuad = holder.GetNode<MeshInstance3D>("Video");
 		notesMultimesh = holder.GetNode<MultiMeshInstance3D>("Notes");
@@ -668,10 +673,12 @@ public partial class LegacyRunner : BaseScene
 		Input.UseAccumulatedInput = false;
 
 		(cursor.Mesh as QuadMesh).Size = new Vector2((float)(Constants.CURSOR_SIZE * settings.CursorScale.Value), (float)(Constants.CURSOR_SIZE * settings.CursorScale.Value));
+        (ghostCursor.Mesh as QuadMesh).Size = (cursor.Mesh as QuadMesh).Size;
 
 		try
 		{
 			(cursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.CursorImage;
+            (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = (cursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture;
 			(cursorTrailMultimesh.MaterialOverride as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.CursorImage;
 			(grid.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.GridImage;
 			panelLeft.GetNode<TextureRect>("Background").Texture = SkinManager.Instance.Skin.PanelLeftBackgroundImage;
@@ -748,6 +755,7 @@ public partial class LegacyRunner : BaseScene
 			}
 
 			cursor.Visible = false;
+            //ghostCursor.Visible = false;
 			ShowReplayViewer();
 		}
 
@@ -788,6 +796,7 @@ public partial class LegacyRunner : BaseScene
 	public override void _Process(double delta)
 	{
         StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
+        StandardMaterial3D ghostcMat = (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D);
 
 		ulong now = Time.GetTicksUsec();
 		delta = (now - lastFrame) / 1000000;	// more reliable
@@ -1071,7 +1080,7 @@ public partial class LegacyRunner : BaseScene
 		}
 
         cursor.RotationDegrees += Vector3.Back * settings.CursorRotation * (float)delta;
-        if (settings.RainbowCursor.Value) cursorMat.AlbedoColor = HueToColor();
+        if (settings.RainbowCursor.Value) { Color _rainbowColor = HueToColor(); cursorMat?.AlbedoColor = _rainbowColor; ghostcMat?.AlbedoColor = _rainbowColor; }
 
 		// trail stuff
 		if (settings.CursorTrail)
@@ -1483,6 +1492,8 @@ public partial class LegacyRunner : BaseScene
 			videoQuad.Position = Camera.Position - Camera.Basis.Z * 103.75f;
 			videoQuad.Rotation = Camera.Rotation;
 		}
+
+        ghostCursor.Position = new Vector3(CurrentAttempt.RawCursorPosition.X, CurrentAttempt.RawCursorPosition.Y, 0);
     }
 
 	public static void UpdateScore(string player, int score)
