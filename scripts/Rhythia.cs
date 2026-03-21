@@ -75,7 +75,7 @@ public partial class Rhythia : Node
 
         Stats.GamesOpened++;
 
-        
+
         // marking sspms for importing can be done with an one liner, kept the following block of code in case we need to loop over every valid map file for some reason
 
         // List<string> import = [];
@@ -92,9 +92,9 @@ public partial class Rhythia : Node
         //     }
         // }
 
-        var nonPhxmMaps = Directory.EnumerateFiles($"{Constants.USER_FOLDER}/maps", $"*.*", SearchOption.AllDirectories).Where(f => f.GetExtension().ToLower() == "sspm" || f.GetExtension().ToLower() == "txt");
+        var nonPhxmMaps = Directory.EnumerateFiles($"{Constants.USER_FOLDER}/maps", $"*.*", SearchOption.AllDirectories).Where(f => f.GetExtension().ToLower() == "rhm" || f.GetExtension().ToLower() == "sspm" || f.GetExtension().ToLower() == "txt");
         await MapParser.BulkImport([.. nonPhxmMaps], notify: true);
-        
+
         // delete after importing
         foreach (string file in nonPhxmMaps)
         {
@@ -188,7 +188,7 @@ public partial class Rhythia : Node
         }
 
         Discord.Client.Dispose();
-        
+
         Instance.GetTree().Quit();
     }
 

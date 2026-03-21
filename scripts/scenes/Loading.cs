@@ -34,7 +34,7 @@ public partial class Loading : BaseScene
         bool updateFound = false;
         try
         {
-            updateFound = await Releases.CheckForUpdatesAsync();
+            // updateFound = await Releases.CheckForUpdatesAsync();
         }
         catch (Exception ex)
         {

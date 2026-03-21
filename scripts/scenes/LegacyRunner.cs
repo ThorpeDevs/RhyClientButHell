@@ -13,6 +13,8 @@ public partial class LegacyRunner : BaseScene
 	private static readonly PackedScene miss_feedback = GD.Load<PackedScene>("res://prefabs/miss_icon.tscn");
 	private static readonly PackedScene modifier_icon = GD.Load<PackedScene>("res://prefabs/modifier.tscn");
 
+    private static bool IsCheating = false;
+
 	public static Camera3D Camera;
 
 	private static Panel menu;
@@ -228,6 +230,8 @@ public partial class LegacyRunner : BaseScene
 
 		public void Hit(int index)
 		{
+            StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
+
 			Hits++;
 			Sum++;
 			Accuracy = Math.Floor((float)Hits / Sum * 10000) / 100;
@@ -235,6 +239,8 @@ public partial class LegacyRunner : BaseScene
 			ComboMultiplierProgress++;
 
 			LastHitColour = SkinManager.Instance.Skin.NoteColors[index % SkinManager.Instance.Skin.NoteColors.Length];
+
+            if (settings.HitColorCursor.Value) cursorMat?.AlbedoColor = LastHitColour;
 
 			float lateness = IsReplay ? HitsInfo[index] : (float)(((int)Progress - Map.Notes[index].Millisecond) / Speed);
 			float factor = 1 - Math.Max(0, lateness - 25) / 150f;
@@ -760,8 +766,29 @@ public partial class LegacyRunner : BaseScene
 		}
 	}
 
+    public static Vector4 Hue(float v)
+    {
+        float num = 6.28318548f * v;
+        Vector4 one = Vector4.One;
+        one.X = (float)(Math.Sin((double)num) * 0.5 + 0.5);
+        one.Y = (float)(Math.Sin((double)(num + 2.09439516f)) * 0.5 + 0.5);
+        one.Z = (float)(Math.Sin((double)(num + 4.18879032f)) * 0.5 + 0.5);
+        one.W = 1f;//(float)115f;
+        return one;
+    }
+
+    public static Color HueToColor(float? time = null)
+    {
+        time ??= (float)DateTime.Now.TimeOfDay.TotalSeconds;
+        Vector4 color = Hue((float)(time % 3.0) / 3f);
+        // color.W = 130f / 255f;
+        return new Color(color.X, color.Y, color.Z, color.W);
+    }
+
 	public override void _Process(double delta)
 	{
+        StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
+
 		ulong now = Time.GetTicksUsec();
 		delta = (now - lastFrame) / 1000000;	// more reliable
 		lastFrame = now;
@@ -915,6 +942,26 @@ public partial class LegacyRunner : BaseScene
 			}
 		}
 
+        if (IsCheating && !CurrentAttempt.IsReplay && CurrentAttempt.Map.Notes.Length > 0)
+        {
+            CurrentAttempt.Qualifies = false;
+            float GRID_SIZE = (float)Constants.GRID_SIZE;
+            // float CURSOR_SIZE = (float)Constants.CURSOR_SIZE * 1f;
+            Note nextNote = CurrentAttempt.PassedNotes >= CurrentAttempt.Map.Notes.Length ? CurrentAttempt.Map.Notes[0] : CurrentAttempt.Map.Notes[CurrentAttempt.PassedNotes];
+            // Take mouse position difference between center of the current window size
+            // This is to make the mouse position the same as relative if it was locked, or confined
+            Vector2 AbsolutePosition = new Vector2(nextNote.X * GRID_SIZE, -(nextNote.Y * GRID_SIZE));
+
+            // GD.Print(nextNote.X, "|", nextNote.Y, "|", AbsolutePosition.X, "|", AbsolutePosition.Y);
+
+            float sens = settings.Sensitivity.Value;
+            // sens *= (float)settings.FoV.Value / 70f;
+            sens *= 15f;
+
+            // Multiply by 0.582f to make it 1:1 to absolute scale on nightly
+            UpdateCursor(AbsolutePosition * sens); // * 0.582f);
+        }
+
 		ToProcess = 0;
 		ProcessNotes.Clear();
 
@@ -1024,6 +1071,7 @@ public partial class LegacyRunner : BaseScene
 		}
 
         cursor.RotationDegrees += Vector3.Back * settings.CursorRotation * (float)delta;
+        if (settings.RainbowCursor.Value) cursorMat.AlbedoColor = HueToColor();
 
 		// trail stuff
 		if (settings.CursorTrail)
@@ -1032,6 +1080,7 @@ public partial class LegacyRunner : BaseScene
 
 			lastCursorPositions.Add(new(){
 				["Time"] = now,
+                ["Color"] = cursorMat.AlbedoColor,
 				["Position"] = CurrentAttempt.CursorPosition,
                 ["Rotation"] = cursor.Rotation.Z
 			});
@@ -1066,8 +1115,15 @@ public partial class LegacyRunner : BaseScene
 				transform.Origin = new Vector3(((Vector2)entry["Position"]).X, ((Vector2)entry["Position"]).Y, 0);
                 transform = transform.RotatedLocal(Vector3.Back, (float)entry["Rotation"]);
 
+                Color GetColor()
+                {
+                    Color color = (Color?)entry["Color"] ?? cursorMat.AlbedoColor;
+                    color.A = alpha / 255f;
+                    return color;
+                }
+
 				cursorTrailMultimesh.Multimesh.SetInstanceTransform(j, transform);
-				cursorTrailMultimesh.Multimesh.SetInstanceColor(j, Color.FromHtml($"ffffff{255 - alpha:X2}"));
+                cursorTrailMultimesh.Multimesh.SetInstanceColor(j, GetColor()); //Color.FromHtml($"ffffff{255 - alpha:X2}"));
 				j++;
 			}
 		}
@@ -1078,9 +1134,10 @@ public partial class LegacyRunner : BaseScene
 	}
 
 	public override void _Input(InputEvent @event)
-	{
+    {
 		if (@event is InputEventMouseMotion eventMouseMotion && Playing && !CurrentAttempt.IsReplay)
 		{
+            if (IsCheating) return;
 			if (!settings.AbsoluteInput)
 			{
 				UpdateCursor(eventMouseMotion.Relative);
@@ -1137,7 +1194,20 @@ public partial class LegacyRunner : BaseScene
 							break;
 						}
 
-						Skip();
+                        if (CurrentAttempt.Skippable) Skip();
+                        else
+                        {
+                            CurrentAttempt.Qualifies = false;
+
+                            if (SettingsManager.Shown)
+                            {
+                                SettingsManager.HideMenu();
+                            }
+                            else
+                            {
+                                ShowMenu(!MenuShown);
+                            }
+                        }
 					}
 					break;
 				case Key.F:
@@ -1358,7 +1428,7 @@ public partial class LegacyRunner : BaseScene
 	}
 
 	public static void UpdateCursor(Vector2 mouseDelta)
-	{
+    {
 		float sensitivity = (float)(CurrentAttempt.IsReplay ? CurrentAttempt.Replays[0].Sensitivity : settings.Sensitivity);
 		sensitivity *= (float)settings.FoV.Value / 70f;
 

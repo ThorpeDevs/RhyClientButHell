@@ -15,7 +15,7 @@ public partial class MapParser : Node
 {
     [Signal] public delegate void MapsImportStartedEventHandler();
     [Signal] public delegate void MapsImportFinishedEventHandler(Map[] maps);
-    [Signal] public delegate void MapImportedEventHandler(Map map); 
+    [Signal] public delegate void MapImportedEventHandler(Map map);
 
     public static MapParser Instance { get; private set; }
 
@@ -24,7 +24,7 @@ public partial class MapParser : Node
         Instance = this;
     }
 
-    public static bool IsValidExt(string ext) => ext == "phxm" || ext == "sspm" || ext == "txt";
+    public static bool IsValidExt(string ext) => ext == "rhm" || ext == "phxm" || ext == "sspm" || ext == "txt";
 
     public static async Task BulkImport(string[] files, bool notify = false)
     {
@@ -107,7 +107,7 @@ public partial class MapParser : Node
                     {
                         bw.Write((float)note.X);
                         bw.Write((float)note.Y);
-                    } 
+                    }
                     else
                     {
                         bw.Write((byte)(note.X + 1));
@@ -172,6 +172,7 @@ public partial class MapParser : Node
           "phxm" => PHXM(path),
           "sspm" => SSPM(path),
           "txt" => SSMapV1(path, audio),
+          "rhm" => RHM(path),
           _ => new()
         };
 
@@ -290,6 +291,106 @@ public partial class MapParser : Node
         catch (Exception exception)
         {
             ToastNotification.Notify($"SSPM file corrupted", 2);
+            Logger.Error(exception);
+            throw;
+        }
+
+        return map;
+    }
+
+    private static Map RHM(string path)
+    {
+        string decodePath = $"{Constants.USER_FOLDER}/cache/rhmdecode";
+
+        if (!Directory.Exists(decodePath))
+        {
+            Directory.CreateDirectory(decodePath);
+        }
+
+        foreach (string filePath in Directory.GetFiles(decodePath))
+        {
+            File.Delete(filePath);
+        }
+
+        Map map;
+
+        try
+        {
+            using var file = ZipFile.OpenRead(path);
+
+            byte[] getEntryBuffer(string entryName)
+            {
+                ZipArchiveEntry entry = file.GetEntry(entryName) ?? throw new($"Entry {entryName} for map {path} is missing!");
+                Stream stream = entry.Open();
+                MemoryStream memoryStream = new();
+
+                stream.CopyTo(memoryStream);
+                stream.Dispose();
+
+                byte[] buffer = memoryStream.ToArray();
+                memoryStream.Dispose();
+
+                return buffer;
+            }
+
+            byte[] mapEntryBuffer = getEntryBuffer("map");
+            byte[] audioBuffer = null;
+            byte[] coverBuffer = null;
+
+            try
+            {
+                audioBuffer = getEntryBuffer("audio");
+            } catch (Exception _) { /* Emulating TryGet */ }
+            try
+            {
+                coverBuffer = getEntryBuffer("cover");
+            } catch (Exception _) { /* Emulating TryGet */ }
+
+            Godot.Collections.Dictionary mapEntry = (Godot.Collections.Dictionary)Json.ParseString(Encoding.UTF8.GetString(mapEntryBuffer));
+            Godot.Collections.Array<Godot.Collections.Dictionary> Notes = (Godot.Collections.Array<Godot.Collections.Dictionary>)mapEntry.GetValueOrDefault("Notes");
+
+            Note[] NewNotes = new Note[Notes.Count];
+
+            // foreach (var note in Notes)
+            for (int i = 0; i < Notes.Count; i++)
+            {
+                var note = Notes[i];
+
+                int Time = (int)note.GetValueOrDefault("Time");
+                float X = (float)note.GetValueOrDefault("X");
+                float Y = (float)note.GetValueOrDefault("Y");
+
+                NewNotes[i] = new Note(i, Time, X - 1, -Y + 1);
+            }
+
+            string SONG_ID = (string)mapEntry["SongName"];
+
+            bool hasID = mapEntry.TryGetValue("LegacyId", out var LegacyId);
+
+            if (hasID) SONG_ID = (string)LegacyId;
+
+            map = new Map(
+                $"{decodePath}/{(string)mapEntry["Title"]}",
+                NewNotes,
+                SONG_ID,
+                null,
+                (string)mapEntry["Title"],
+                (float)mapEntry["StarRating"],
+                (string[])mapEntry["Mappers"],
+                (int)mapEntry["Difficulty"],
+                (string)mapEntry["CustomDifficultyName"],
+                (int)mapEntry["Duration"],
+                audioBuffer,
+                coverBuffer,
+                null,
+                false,
+                "",
+                ""
+            );
+        }
+        catch (Exception exception)
+        {
+            ToastNotification.Notify($"RHM file corrupted or couldn't detect version", 2);
             Logger.Error(exception);
             throw;
         }

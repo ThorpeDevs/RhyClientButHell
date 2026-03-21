@@ -144,6 +144,18 @@ public partial class SettingsProfile
     public SettingsItem<int> CursorRotation { get; private set; }
 
     /// <summary>
+    /// Makes the Cursor and Trail Rainbow!
+    /// </summary>
+    [Order]
+    public SettingsItem<bool> RainbowCursor { get; private set; }
+
+    /// <summary>
+    /// When you hit a note, Change the Cursor to the color of the note, On miss keep current color, Trail is also changed.
+    /// </summary>
+    [Order]
+    public SettingsItem<bool> HitColorCursor { get; private set; }
+
+    /// <summary>
     /// Toggles a trial for your cursor
     /// </summary>
     [Order]
@@ -559,6 +571,44 @@ public partial class SettingsProfile
                 Step = 1,
                 MinValue = -360,
                 MaxValue = 360
+            }
+        };
+
+        RainbowCursor = new(false)
+        {
+            Id = "CursorRainbow",
+            Title = "Rainbow Cursor",
+            Description = "Makes the Cursor and Trail Rainbow!",
+            Section = SettingsSection.Visual,
+            UpdateAction = (value, _) =>
+            {
+                if (HitColorCursor is { Value: true })
+                {
+                    HitColorCursor.Value = false;
+                }
+
+                if (RainbowCursor != null && RainbowCursor.Value == value) return;
+
+                RainbowCursor?.Value = value;
+            }
+        };
+
+        HitColorCursor = new SettingsItem<bool>(false)
+        {
+            Id = "CursorHitChange",
+            Title = "Hit Color Cursor",
+            Description = "When you hit a note, Change the Cursor to the color of the note, On miss keep current color, Trail is also changed.",
+            Section = SettingsSection.Visual,
+            UpdateAction = (value, _) =>
+            {
+                if (RainbowCursor is { Value: true })
+                {
+                    RainbowCursor.Value = false;
+                }
+
+                if (HitColorCursor != null && HitColorCursor.Value == value) return;
+
+                HitColorCursor?.Value = value;
             }
         };
 
