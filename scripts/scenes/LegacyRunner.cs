@@ -27,6 +27,7 @@ public partial class LegacyRunner : BaseScene
 	//private static TextureRect jesus;
 	private static MeshInstance3D cursor;
     private static MeshInstance3D ghostCursor;
+    private static float ghostTransparancy = 0.75f;
 	private static MeshInstance3D grid;
 	private static MeshInstance3D videoQuad;
 	private static MultiMeshInstance3D notesMultimesh;
@@ -232,7 +233,6 @@ public partial class LegacyRunner : BaseScene
 		public void Hit(int index)
 		{
             StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
-            StandardMaterial3D ghostcMat = (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D);
 
 			Hits++;
 			Sum++;
@@ -242,7 +242,7 @@ public partial class LegacyRunner : BaseScene
 
 			LastHitColour = SkinManager.Instance.Skin.NoteColors[index % SkinManager.Instance.Skin.NoteColors.Length];
 
-            if (settings.HitColorCursor.Value) { cursorMat?.AlbedoColor = LastHitColour; ghostcMat?.AlbedoColor = LastHitColour; }
+            if (settings.HitColorCursor.Value) cursorMat?.AlbedoColor = LastHitColour;
 
 			float lateness = IsReplay ? HitsInfo[index] : (float)(((int)Progress - Map.Notes[index].Millisecond) / Speed);
 			float factor = 1 - Math.Max(0, lateness - 25) / 150f;
@@ -678,7 +678,8 @@ public partial class LegacyRunner : BaseScene
 		try
 		{
 			(cursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.CursorImage;
-            (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = (cursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture;
+            (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.CursorImage;
+            ghostCursor.Transparency = ghostTransparancy;
 			(cursorTrailMultimesh.MaterialOverride as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.CursorImage;
 			(grid.GetActiveMaterial(0) as StandardMaterial3D).AlbedoTexture = SkinManager.Instance.Skin.GridImage;
 			panelLeft.GetNode<TextureRect>("Background").Texture = SkinManager.Instance.Skin.PanelLeftBackgroundImage;
@@ -755,7 +756,6 @@ public partial class LegacyRunner : BaseScene
 			}
 
 			cursor.Visible = false;
-            //ghostCursor.Visible = false;
 			ShowReplayViewer();
 		}
 
@@ -796,7 +796,6 @@ public partial class LegacyRunner : BaseScene
 	public override void _Process(double delta)
 	{
         StandardMaterial3D cursorMat = (cursor.GetActiveMaterial(0) as StandardMaterial3D);
-        StandardMaterial3D ghostcMat = (ghostCursor.GetActiveMaterial(0) as StandardMaterial3D);
 
 		ulong now = Time.GetTicksUsec();
 		delta = (now - lastFrame) / 1000000;	// more reliable
@@ -1080,7 +1079,7 @@ public partial class LegacyRunner : BaseScene
 		}
 
         cursor.RotationDegrees += Vector3.Back * settings.CursorRotation * (float)delta;
-        if (settings.RainbowCursor.Value) { Color _rainbowColor = HueToColor(); cursorMat?.AlbedoColor = _rainbowColor; ghostcMat?.AlbedoColor = _rainbowColor; }
+        if (settings.RainbowCursor.Value) cursorMat?.AlbedoColor = HueToColor();
 
 		// trail stuff
 		if (settings.CursorTrail)
@@ -1451,15 +1450,8 @@ public partial class LegacyRunner : BaseScene
 
 		if (!CurrentAttempt.Mods["Spin"])
 		{
-			if (settings.CursorDrift)
-			{
-				CurrentAttempt.CursorPosition = (CurrentAttempt.CursorPosition + new Vector2(1, -1) * mouseDelta / 120 * sensitivity).Clamp(-Constants.BOUNDS, Constants.BOUNDS);
-			}
-			else
-			{
-				CurrentAttempt.RawCursorPosition += new Vector2(1, -1) * (mouseDelta * sensitivity / 120f);
-				CurrentAttempt.CursorPosition = CurrentAttempt.RawCursorPosition.Clamp(-Constants.BOUNDS, Constants.BOUNDS);
-			}
+            CurrentAttempt.RawCursorPosition += new Vector2(1, -1) * (mouseDelta * sensitivity / 120f);
+			CurrentAttempt.CursorPosition = settings.CursorDrift ? (CurrentAttempt.CursorPosition + new Vector2(1, -1) * mouseDelta / 120 * sensitivity).Clamp(-Constants.BOUNDS, Constants.BOUNDS) : CurrentAttempt.RawCursorPosition.Clamp(-Constants.BOUNDS, Constants.BOUNDS);
 
 			cursor.Position = new Vector3(CurrentAttempt.CursorPosition.X, CurrentAttempt.CursorPosition.Y, 0);
 			Camera.Position = new Vector3(0, 0, 3.75f) + new Vector3(CurrentAttempt.CursorPosition.X, CurrentAttempt.CursorPosition.Y, 0) * (float)(CurrentAttempt.IsReplay ? CurrentAttempt.Replays[0].Parallax : settings.CameraParallax);
@@ -1494,6 +1486,7 @@ public partial class LegacyRunner : BaseScene
 		}
 
         ghostCursor.Position = new Vector3(CurrentAttempt.RawCursorPosition.X, CurrentAttempt.RawCursorPosition.Y, 0);
+        ghostCursor.Visible = settings.AbsoluteInput.Value || !settings.CursorDrift.Value;
     }
 
 	public static void UpdateScore(string player, int score)
